@@ -28,12 +28,15 @@ CUENTAS_POR_VUELTA = 495     # encoder GM25-370: verificar con 10 vueltas a mano
 DIAMETRO_RUEDA_M = 0.065
 GUARDAR_CADA_S = 0.5         # una lectura en la base cada medio segundo
 TURBINA = 80                 # % de la turbina al limpiar (la turbina necesita 50 % o más)
+V_VACIA = 10.5               # batería 3S: 0 % (deja carga para regresar a la base)
+V_LLENA = 12.3               # 100 % (D17 punto 8). Provisional: se revisa al medir en E6.
+                             # Si cambia, cambiarlo también en el firmware del ESP32 (V_LLENA)
 
 
 def bateria_pct(mv):
-    """Batería 3S: 10.5 V = 0 %, 12.6 V = 100 %.
+    """Batería 3S: V_VACIA = 0 %, V_LLENA = 100 %.
     El ESP32 usa la misma fórmula para el tema MQTT roomba/robot/bateria (D17)."""
-    return max(0, min(100, round((mv / 1000 - 10.5) / (12.6 - 10.5) * 100)))
+    return max(0, min(100, round((mv / 1000 - V_VACIA) / (V_LLENA - V_VACIA) * 100)))
 
 
 def estacion_cargando(con):
@@ -253,7 +256,7 @@ class RobotSimulado:
             self.pos = [x + (bx > x) - (bx < x), y] if x != bx else [x, y + (by > y) - (by < y)]
             self.mv -= 2
         elif puente.modo == "cargando":
-            self.mv = min(12600, self.mv + 25)
+            self.mv = min(int(V_LLENA * 1000), self.mv + 25)
         # El simulador pone la posición directo (sin encoders)
         puente.x = (self.pos[0] + 0.5) * db.CELDA_M
         puente.y = (self.pos[1] + 0.5) * db.CELDA_M

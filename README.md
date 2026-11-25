@@ -76,7 +76,7 @@ La Pi manda:
 | `R` | Quita el paro (la Pi lo manda al iniciar, reanudar o regresar). |
 | `Z` | Pone el yaw en 0 (la Pi lo manda cuando la estación avisa que el robot está cargando). |
 
-La batería se calcula igual en la Pi y en el ESP32: 10.5 V = 0 % y 12.6 V = 100 %.
+La batería se calcula igual en la Pi y en el ESP32: 10.5 V = 0 % y 12.3 V = 100 % (`V_LLENA` en `puente_robot.py` y en el firmware; provisional hasta medir la batería recién cargada).
 
 ## 4. API
 
