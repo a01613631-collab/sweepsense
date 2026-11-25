@@ -9,3 +9,7 @@ dist/
 secretos.h
 venv/
 .venv/
+
+# Coral: modelo descargado y fotos de prueba (no se suben)
+modelos/
+fotos/
