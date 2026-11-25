@@ -49,7 +49,7 @@ cd servidor
 .venv/bin/python puente_robot.py --simular   # robot simulado en lugar del ESP32
 ```
 
-La red propia de la Pi para el demo (la IP no cambia, pero la Pi se queda sin internet) está en `pi/red_propia.sh`; no se corre sola.
+La red propia de la Pi para el demo (decisión 15) está en `pi/red_propia.sh`; no se corre sola. La Pi emite la red «Roomba» con IP fija `10.42.0.1`: las ESP usan `MQTT_BROKER "10.42.0.1"` y la app `http://10.42.0.1:5000` (ya viene por defecto). Mientras la emite, la Pi no tiene internet por Wi-Fi.
 
 En la app: **Ajustes → Robot real**, escribe `http://<IP de la Pi>:5000` (la IP sale con `hostname -I`) y toca **Probar conexión**.
 

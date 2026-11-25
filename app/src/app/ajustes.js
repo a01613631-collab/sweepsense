@@ -64,8 +64,8 @@ export default function Ajustes() {
         <Tarjeta style={{ gap: 10 }}>
           <Text style={est.fuerte}>Dirección de la Raspberry Pi</Text>
           <TextInput value={url} onChangeText={setUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url"
-            placeholder="http://192.168.1.50:5000" style={est.input} placeholderTextColor={color.suave} />
-          <Text style={est.sub}>En la Pi ejecuta: hostname -I  para ver su IP.</Text>
+            placeholder="http://10.42.0.1:5000" style={est.input} placeholderTextColor={color.suave} />
+          <Text style={est.sub}>Conectado a la red Roomba de la Pi: http://10.42.0.1:5000. En otra red, en la Pi ejecuta hostname -I para ver su IP.</Text>
           <Boton tipo="secundario" titulo={probando ? 'Probando…' : 'Probar conexión'} icono="wifi" deshabilitado={probando} onPress={probar} />
         </Tarjeta>
       )}

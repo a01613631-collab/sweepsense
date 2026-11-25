@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as demo from './demo';
 
 const CLAVE = 'sweepsense.config';
-let config = { modo: 'demo', url: 'http://192.168.1.50:5000' };
+let config = { modo: 'demo', url: 'http://10.42.0.1:5000' };
 const oyentes = new Set();
 
 export async function cargarConfig() {
