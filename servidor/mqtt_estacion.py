@@ -97,7 +97,15 @@ def main():
     cliente.username_pw_set(os.environ.get("MQTT_USUARIO", "roomba"), os.environ.get("MQTT_CLAVE", ""))
     cliente.on_connect = al_conectar
     cliente.on_message = al_recibir
-    cliente.connect(os.environ.get("MQTT_HOST", "localhost"), 1883)
+    # Como servicio, puede arrancar antes que Mosquitto: se espera en lugar de caerse.
+    # Ya conectado, paho reconecta solo si el broker se reinicia.
+    while True:
+        try:
+            cliente.connect(os.environ.get("MQTT_HOST", "localhost"), 1883)
+            break
+        except OSError as e:
+            print("No hay broker todavía:", e, "· reintento en 5 s", flush=True)
+            time.sleep(5)
     cliente.loop_start()
 
     t_guardado = 0
