@@ -31,6 +31,8 @@ CUENTAS_POR_VUELTA = 495     # encoder GM25-370: verificar con 10 vueltas a mano
 DIAMETRO_RUEDA_M = 0.065
 GUARDAR_CADA_S = 0.5         # una lectura en la base cada medio segundo
 TURBINA = 80                 # % de la turbina al limpiar (la turbina necesita 50 % o más)
+CARGA_POR_CONTACTOS = False  # False = la batería se carga aparte (decisión 1 del 2026-11-24): al
+                             # llegar a la base el modo es en_espera, no cargando. True = D17 punto 7
 V_VACIA = 10.5               # batería 3S: 0 % (deja carga para regresar a la base)
 V_LLENA = 12.3               # 100 % (D17 punto 8). Provisional: se revisa al medir en E6.
                              # Si cambia, cambiarlo también en el firmware del ESP32 (V_LLENA)
@@ -161,21 +163,32 @@ class Puente:
             self.nav.regresar()
         if bat > 30:
             self.bateria_baja_avisada = False
-        # Llegada a la base. El robot no ve su corriente de carga (el INA219 está después
-        # del interruptor), así que manda la estación: roomba/base/cargando = 1.
-        # Si la estación no está mandando datos (simulador), se usa la celda de la base.
-        cargando = estacion_cargando(con)
-        if cargando is None:
-            en_base = (cx, cy) == db.BASE
+        # Llegada a la base
+        if CARGA_POR_CONTACTOS:
+            # Carga por los contactos (D17 punto 7): el robot no ve su corriente de carga
+            # (el INA219 está después del interruptor), así que manda la estación:
+            # roomba/base/cargando = 1. Sin datos de la estación (simulador), la celda de la base.
+            cargando = estacion_cargando(con)
+            if cargando is None:
+                en_base = (cx, cy) == db.BASE
+            else:
+                en_base = cargando
+            if self.modo == "regresando" and en_base:
+                self.modo = "cargando"
+                self.enviar("C,0,0,0")
+                self.enviar("Z")           # el yaw vuelve a 0 en la base
+                db.evento(con, "base", "Robot en la base")
+            if self.modo == "cargando" and (bat >= 100 or cargando is False):
+                self.modo = "en_espera"
         else:
-            en_base = cargando
-        if self.modo == "regresando" and en_base:
-            self.modo = "cargando"
-            self.enviar("C,0,0,0")
-            self.enviar("Z")           # el yaw vuelve a 0 en la base
-            db.evento(con, "base", "Robot en la base")
-        if self.modo == "cargando" and (bat >= 100 or cargando is False):
-            self.modo = "en_espera"
+            # Sin contactos (decisión del 2026-11-24): la batería se carga aparte con un
+            # eliminador y la estación ya no ve corriente de carga. La llegada se decide por
+            # odometría: al llegar a la celda de la base se apaga todo y queda en espera.
+            if self.modo == "regresando" and (cx, cy) == db.BASE:
+                self.modo = "en_espera"
+                self.enviar("C,0,0,0")
+                self.enviar("Z")           # el yaw vuelve a 0 en la base
+                db.evento(con, "base", "Robot en la base")
 
         # Mapa: celdas recorridas
         if self.modo == "limpiando" and (cx, cy) != self.celda_antes:

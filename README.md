@@ -74,7 +74,7 @@ La Pi manda:
 | `C,turbina,cepillo,bomba` | Turbina en % (0 o de 50 a 100) y bomba (0/1). El cepillo va con la turbina en el mismo MOSFET, así que el ESP32 ignora ese campo. |
 | `X` | Paro. Se queda trabado hasta que llega `R`; el ESP32 avisa con `estado` = `paro` y la Pi pasa a `pausado`. |
 | `R` | Quita el paro (la Pi lo manda al iniciar, reanudar o regresar). |
-| `Z` | Pone el yaw en 0 (la Pi lo manda cuando la estación avisa que el robot está cargando). |
+| `Z` | Pone el yaw en 0 (la Pi lo manda cuando el robot llega a la base). |
 
 La batería se calcula igual en la Pi y en el ESP32: 10.5 V = 0 % y 12.3 V = 100 % (`V_LLENA` en `puente_robot.py` y en el firmware; provisional hasta medir la batería recién cargada).
 
