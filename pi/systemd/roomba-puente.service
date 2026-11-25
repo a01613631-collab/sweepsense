@@ -1,0 +1,17 @@
+# SweepSense: puente con el ESP32 por USB (lee la trama, manda M, C, X, R y Z).
+# instalar_pi.sh cambia @USUARIO@ y @CARPETA@ por los de la Pi y lo copia a /etc/systemd/system/
+[Unit]
+Description=SweepSense puente con el ESP32 (USB)
+After=roomba-api.service
+Wants=roomba-api.service
+
+[Service]
+User=@USUARIO@
+WorkingDirectory=@CARPETA@/servidor
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@CARPETA@/servidor/.venv/bin/python puente_robot.py --puerto auto
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

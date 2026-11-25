@@ -1,0 +1,17 @@
+# SweepSense: API HTTP para la app (puerto 5000).
+# instalar_pi.sh cambia @USUARIO@ y @CARPETA@ por los de la Pi y lo copia a /etc/systemd/system/
+[Unit]
+Description=SweepSense API HTTP (Flask, puerto 5000)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=@USUARIO@
+WorkingDirectory=@CARPETA@/servidor
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@CARPETA@/servidor/.venv/bin/python app.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

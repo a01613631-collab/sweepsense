@@ -1,0 +1,17 @@
+# SweepSense: MQTT con la estación base y modo de la Pi (roomba/pi/modo).
+# instalar_pi.sh cambia @USUARIO@ y @CARPETA@ por los de la Pi y lo copia a /etc/systemd/system/
+[Unit]
+Description=SweepSense MQTT de la estacion base
+After=mosquitto.service
+Wants=mosquitto.service
+
+[Service]
+User=@USUARIO@
+WorkingDirectory=@CARPETA@/servidor
+Environment=PYTHONUNBUFFERED=1
+ExecStart=@CARPETA@/servidor/.venv/bin/python mqtt_estacion.py
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

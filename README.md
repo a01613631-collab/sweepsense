@@ -21,25 +21,35 @@ La app arranca en **modo demo**: un robot simulado que limpia, choca con obstác
 
 ## 2. Servidor en la Raspberry Pi
 
+Raspberry Pi OS **Bookworm de 64 bits** (Legacy). Todo se instala con un script que se puede correr varias veces:
+
+```bash
+git clone -b adaptacion-plan https://github.com/a01613631-collab/sweepsense.git ~/sweepsense
+bash ~/sweepsense/pi/instalar_pi.sh
+```
+
+El script instala Mosquitto (usuario `roomba`; la contraseña te la pide en la terminal), te agrega a los grupos `dialout` y `plugdev`, crea el entorno de Python y deja tres servicios que arrancan solos al prender la Pi: `roomba-api` (puerto 5000), `roomba-puente` (ESP32 por USB, `--puerto auto`) y `roomba-estacion` (MQTT). Un cuarto, `roomba-vision` (Coral, bonus), queda instalado pero apagado. Ver su estado: `systemctl status roomba-puente`; su log: `journalctl -u roomba-puente -f`.
+
+**Entorno de Python:** en Bookworm, `pip install` fuera de un entorno falla con «externally-managed-environment». Por eso todo corre dentro de `servidor/.venv`, creado con `python3 -m venv --system-site-packages .venv` (así también se ven `picamera2` y otros paquetes del sistema):
+
 ```bash
 cd servidor
-pip install -r requirements.txt
-sudo apt install mosquitto mosquitto-clients     # broker MQTT
-
-python3 app.py                  # API HTTP en el puerto 5000 (crea sweepsense.db)
-python3 puente_robot.py         # lee el ESP32 por /dev/ttyUSB0
-python3 mqtt_estacion.py        # recibe la estación base por MQTT
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -r requirements.txt
 ```
 
-Antes de `mqtt_estacion.py`, copia `servidor/.env.ejemplo` como `servidor/.env` y escribe la contraseña del broker (usuario `roomba`). El archivo `.env` no se sube a GitHub.
+`servidor/.env` lleva la contraseña del broker (el script lo crea a partir de `.env.ejemplo`). No se sube a GitHub.
 
-Sin el robot armado se puede probar todo así:
+Sin el robot armado se puede probar todo así (detén antes los servicios con `sudo systemctl stop roomba-puente`):
 
 ```bash
-python3 datos_prueba.py             # (una vez) limpiezas pasadas para el Historial
-python3 app.py
-python3 puente_robot.py --simular   # robot simulado en lugar del ESP32
+cd servidor
+.venv/bin/python datos_prueba.py             # (una vez) limpiezas pasadas para el Historial
+.venv/bin/python app.py
+.venv/bin/python puente_robot.py --simular   # robot simulado en lugar del ESP32
 ```
+
+La red propia de la Pi para el demo (la IP no cambia, pero la Pi se queda sin internet) está en `pi/red_propia.sh`; no se corre sola.
 
 En la app: **Ajustes → Robot real**, escribe `http://<IP de la Pi>:5000` (la IP sale con `hostname -I`) y toca **Probar conexión**.
 
