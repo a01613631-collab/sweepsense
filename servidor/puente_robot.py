@@ -13,10 +13,13 @@ Protocolo (decisión D17 de la bóveda, 115200 baud, una trama cada 200 ms):
 
 Ejecutar:
   python3 puente_robot.py                  # con el robot en /dev/ttyUSB0
+  python3 puente_robot.py --puerto auto    # busca el ESP32 (/dev/serial/by-id/, ttyUSB0 o ttyACM0)
   python3 puente_robot.py --simular        # sin hardware: robot simulado para probar API y app
 """
 import argparse
+import glob
 import math
+import os
 import random
 import time
 from datetime import datetime
@@ -273,7 +276,7 @@ class RobotSimulado:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--puerto", default="/dev/ttyUSB0")
+    ap.add_argument("--puerto", default="/dev/ttyUSB0", help="ruta del ESP32, o auto para buscarlo")
     ap.add_argument("--simular", action="store_true", help="no usa el ESP32; simula el robot")
     ap.add_argument("--ver", action="store_true", help="en --simular, también muestra las órdenes de motores (M,...)")
     args = ap.parse_args()
@@ -303,20 +306,75 @@ def main():
             print(f"             modo: {puente.modo:<11} celda: ({cx}, {cy})   batería: {bat} %", flush=True)
             time.sleep(1.0)
     else:
-        import serial  # pip install pyserial
-        esp = serial.Serial(args.puerto, 115200, timeout=0.1)
-        puente = Puente(lambda l: esp.write((l + "\n").encode()))
-        print(f"Conectado al ESP32 en {args.puerto}")
-        ultimo_rx = time.time()
-        while True:
+        robot_real(args.puerto)
+
+
+def buscar_puerto():
+    """Para --puerto auto. Primero /dev/serial/by-id/, porque ahí el nombre del ESP32
+    no cambia aunque se desconecte y se vuelva a conectar (ttyUSB0 puede volverse ttyUSB1)."""
+    por_id = sorted(glob.glob("/dev/serial/by-id/*"))
+    if por_id:
+        return por_id[0]
+    for ruta in ("/dev/ttyUSB0", "/dev/ttyACM0"):
+        if os.path.exists(ruta):
+            return ruta
+    return None
+
+
+def robot_real(puerto):
+    """Lee el ESP32 por USB. Si se desconecta, no se cae: espera 2 s y vuelve a intentar."""
+    import serial  # pip install pyserial
+
+    conexion = {"esp": None}       # el puerto abierto, o None si no hay ESP32
+
+    def enviar(linea):
+        if conexion["esp"] is not None:
+            conexion["esp"].write((linea + "\n").encode())
+
+    puente = Puente(enviar)
+    ultimo_rx = time.time()
+    ya_conectado_antes = False
+
+    while True:
+        # 1. Sin ESP32: buscarlo cada 2 s
+        if conexion["esp"] is None:
+            ruta = buscar_puerto() if puerto == "auto" else puerto
+            try:
+                conexion["esp"] = serial.Serial(ruta, 115200, timeout=0.1) if ruta else None
+            except serial.SerialException:
+                conexion["esp"] = None
+            if conexion["esp"] is None:
+                time.sleep(2)
+                continue
+            print(f"Conectado al ESP32 en {ruta}", flush=True)
+            if ya_conectado_antes:
+                with db.conectar() as con:
+                    db.evento(con, "sistema", "El USB del ESP32 volvió a conectarse")
+            ya_conectado_antes = True
+            ultimo_rx = time.time()
+
+        # 2. Con ESP32: comandos de la app, trama del robot y seguridad
+        try:
             with db.conectar() as con:
                 puente.atender_comandos(con)
-                linea = esp.readline().decode(errors="ignore")
+                linea = conexion["esp"].readline().decode(errors="ignore")
                 if linea:
                     ultimo_rx = time.time()
                     puente.procesar(linea, con)
             if time.time() - ultimo_rx > 0.5 and puente.modo == "limpiando":
-                esp.write(b"X\n")  # seguridad: sin datos del ESP32, paro
+                enviar("X")  # seguridad: sin datos del ESP32, paro
+        except (serial.SerialException, OSError):
+            print("Se perdió el USB del ESP32. Vuelvo a intentar en 2 s.", flush=True)
+            try:
+                conexion["esp"].close()
+            except Exception:
+                pass
+            conexion["esp"] = None
+            with db.conectar() as con:
+                db.evento(con, "sistema", "Se desconectó el USB del ESP32")
+                if puente.modo in ("limpiando", "regresando"):
+                    puente.modo = "pausado"
+            time.sleep(2)
 
 
 if __name__ == "__main__":
