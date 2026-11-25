@@ -333,6 +333,7 @@ def robot_real(puerto):
 
     puente = Puente(enviar)
     ultimo_rx = time.time()
+    paro_por_silencio = False      # para mandar la X una sola vez por cada pérdida de datos
     ya_conectado_antes = False
 
     while True:
@@ -360,9 +361,15 @@ def robot_real(puerto):
                 linea = conexion["esp"].readline().decode(errors="ignore")
                 if linea:
                     ultimo_rx = time.time()
+                    paro_por_silencio = False
                     puente.procesar(linea, con)
-            if time.time() - ultimo_rx > 0.5 and puente.modo == "limpiando":
-                enviar("X")  # seguridad: sin datos del ESP32, paro
+            # Seguridad: 0.5 s sin tramas mientras se mueve = paro (una vez) y pausa
+            if time.time() - ultimo_rx > 0.5 and not paro_por_silencio and puente.modo in ("limpiando", "regresando"):
+                paro_por_silencio = True
+                enviar("X")
+                puente.modo = "pausado"
+                with db.conectar() as con:
+                    db.evento(con, "sistema", "El robot dejó de mandar datos: paro (X) y pausa")
         except (serial.SerialException, OSError):
             print("Se perdió el USB del ESP32. Vuelvo a intentar en 2 s.", flush=True)
             try:
