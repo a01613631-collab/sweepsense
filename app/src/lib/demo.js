@@ -149,7 +149,7 @@ function paso() {
     } else {
       terminarSesion();
       s.modo = 'regresando';
-      evento('regreso', 'Regresando a la base');
+      evento('regreso', 'Regresando al inicio');
     }
     if (s.bateria < 20 && s.modo === 'limpiando') {
       evento('bateria_baja', 'Batería baja: regresando a la base');
@@ -169,8 +169,8 @@ function paso() {
   }
 }
 
-// Misma escala que la Pi (puente_robot.py): V_VACIA = 10.5 V es 0 %, V_LLENA = 12.3 V es 100 %
-const voltaje = (b) => +(10.5 + (12.3 - 10.5) * (b / 100)).toFixed(2);
+// Misma escala que la Pi (puente_robot.py): V_VACIA = 10.5 V es 0 %, V_LLENA = 12.6 V es 100 %
+const voltaje = (b) => +(10.5 + (12.6 - 10.5) * (b / 100)).toFixed(2);
 const corriente = (modo) => ({ limpiando: 2600, regresando: 900, pausado: 650, cargando: -1500 }[modo] ?? 600);
 
 // Los últimos 30 minutos simulados (una limpieza y el regreso), para que la gráfica no empiece vacía.
@@ -271,7 +271,7 @@ export function comando({ accion, zona = 'completa', tipo = 'aspirar', tarea_id 
   } else if (accion === 'detener') {
     terminarSesion(); s.modo = 'en_espera'; evento('comando', 'Detener');
   } else if (accion === 'regresar') {
-    terminarSesion(); s.modo = 'regresando'; evento('comando', 'Regresar a base');
+    terminarSesion(); s.modo = 'regresando'; evento('comando', 'Regresar al inicio');
   }
   return { ok: true, modo: s.modo };
 }

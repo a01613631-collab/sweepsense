@@ -23,7 +23,6 @@ import math
 import os
 import random
 import time
-from datetime import datetime
 
 import db
 from navegacion import Navegacion
@@ -32,10 +31,11 @@ CUENTAS_POR_VUELTA = 495     # encoder GM25-370: verificar con 10 vueltas a mano
 DIAMETRO_RUEDA_M = 0.065
 GUARDAR_CADA_S = 0.5         # una lectura en la base cada medio segundo
 TURBINA = 80                 # % de la turbina al limpiar (la turbina necesita 50 % o más)
-CARGA_POR_CONTACTOS = False  # False = la batería se carga aparte (decisión 1 del 2026-11-24): al
-                             # llegar a la base el modo es en_espera, no cargando. True = D17 punto 7
-V_VACIA = 10.5               # batería 3S: 0 % (deja carga para regresar a la base)
-V_LLENA = 12.3               # 100 % (D17 punto 8). Provisional: se revisa al medir en E6.
+# Sin estación base (decisión del 2026-11-26): el robot trabaja solo y su batería se carga
+# directo con el eliminador. «A la base» = volver a la celda donde arrancó (por odometría).
+V_VACIA = 10.5               # batería 3S: 0 % (deja carga para volver al punto de inicio)
+V_LLENA = 12.6               # 100 %: 3S recién cargada con el eliminador (4.2 V por celda).
+                             # Ya no hay diodo de carga (D18). POR CONFIRMAR: medir en reposo.
                              # Si cambia, cambiarlo también en el firmware del ESP32 (V_LLENA)
 
 
@@ -43,18 +43,6 @@ def bateria_pct(mv):
     """Batería 3S: V_VACIA = 0 %, V_LLENA = 100 %.
     El ESP32 usa la misma fórmula para el tema MQTT roomba/robot/bateria (D17)."""
     return max(0, min(100, round((mv / 1000 - V_VACIA) / (V_LLENA - V_VACIA) * 100)))
-
-
-def estacion_cargando(con):
-    """Lo que dice la estación base: True o False.
-    None si la estación no ha mandado nada en los últimos 10 s (por ejemplo, en el simulador)."""
-    fila = con.execute("SELECT momento, cargando FROM estacion ORDER BY id DESC LIMIT 1").fetchone()
-    if not fila:
-        return None
-    momento = datetime.fromisoformat(fila["momento"])
-    if (datetime.now() - momento).total_seconds() > 10:
-        return None
-    return bool(fila["cargando"])
 
 
 MOVIENDO = ("limpiando", "regresando")
@@ -267,37 +255,17 @@ class Puente:
             self.pausar(con, "El robot recibió un paro (X): en pausa hasta reanudar", mandar_x=False)
         if bat < 20 and not self.bateria_baja_avisada and self.modo == "limpiando":
             self.bateria_baja_avisada = True
-            db.evento(con, "bateria_baja", "Batería baja: regresando a la base")
+            db.evento(con, "bateria_baja", "Batería baja: regresando al inicio")
             self.modo = "regresando"
             self.nav.regresar()
         if bat > 30:
             self.bateria_baja_avisada = False
-        # Llegada a la base
-        if CARGA_POR_CONTACTOS:
-            # Carga por los contactos (D17 punto 7): el robot no ve su corriente de carga
-            # (el INA219 está después del interruptor), así que manda la estación:
-            # roomba/base/cargando = 1. Sin datos de la estación (simulador), la celda de la base.
-            cargando = estacion_cargando(con)
-            if cargando is None:
-                en_base = (cx, cy) == db.BASE
-            else:
-                en_base = cargando
-            if self.modo == "regresando" and en_base:
-                self.modo = "cargando"
-                self.enviar("C,0,0,0")
-                self.enviar("Z")           # el yaw vuelve a 0 en la base
-                db.evento(con, "base", "Robot en la base")
-            if self.modo == "cargando" and (bat >= 100 or cargando is False):
-                self.modo = "en_espera"
-        else:
-            # Sin contactos (decisión del 2026-11-24): la batería se carga aparte con un
-            # eliminador y la estación ya no ve corriente de carga. La llegada se decide por
-            # odometría: al llegar a la celda de la base se apaga todo y queda en espera.
-            if self.modo == "regresando" and (cx, cy) == db.BASE:
-                self.modo = "en_espera"
-                self.enviar("C,0,0,0")
-                self.enviar("Z")           # el yaw vuelve a 0 en la base
-                db.evento(con, "base", "Robot en la base")
+        # Llegada al punto de inicio (por odometría): se apaga todo y queda en espera
+        if self.modo == "regresando" and (cx, cy) == db.BASE:
+            self.modo = "en_espera"
+            self.enviar("C,0,0,0")
+            self.enviar("Z")           # el yaw vuelve a 0 donde arrancó
+            db.evento(con, "base", "Robot en el punto de inicio")
 
         # Mapa: celdas recorridas
         if self.modo == "limpiando" and (cx, cy) != self.celda_antes:
@@ -305,7 +273,7 @@ class Puente:
             self.celda_antes = (cx, cy)
             if self.nav.termino(cx, cy):
                 db.cerrar_sesion(con, bat)
-                db.evento(con, "regreso", "Zona terminada: regresando a la base")
+                db.evento(con, "regreso", "Zona terminada: regresando al inicio")
                 self.modo = "regresando"
                 self.enviar("C,0,0,0")
                 self.nav.regresar()

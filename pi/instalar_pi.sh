@@ -138,8 +138,10 @@ for archivo in "$CARPETA"/pi/systemd/*.service; do
     | sudo tee "/etc/systemd/system/$nombre" > /dev/null
 done
 sudo systemctl daemon-reload
-sudo systemctl enable roomba-api roomba-puente roomba-estacion
-sudo systemctl restart roomba-api roomba-puente roomba-estacion
+sudo systemctl enable roomba-api roomba-puente
+# Sin estación base (2026-11-26): su servicio se instala pero queda apagado
+sudo systemctl disable --now roomba-estacion 2>/dev/null || true
+sudo systemctl restart roomba-api roomba-puente
 # La visión con el Coral es bonus (D12): se instala pero no se prende sola
 sudo systemctl disable roomba-vision 2>/dev/null || true
 

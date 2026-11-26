@@ -14,7 +14,6 @@ from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
 
 import db
-from puente_robot import CARGA_POR_CONTACTOS
 
 app = Flask(__name__)
 ACCIONES = {"iniciar", "pausar", "reanudar", "detener", "regresar"}
@@ -54,7 +53,7 @@ MODOS_VALIDOS = {
 POR_QUE_NO = {
     "pausar": "Solo se puede pausar mientras limpia o regresa a la base.",
     "reanudar": "Solo se puede reanudar si el robot está en pausa.",
-    "regresar": "El robot ya va a la base o ya está en ella.",
+    "regresar": "El robot ya va de regreso al punto de inicio.",
 }
 
 
@@ -124,10 +123,6 @@ def estado():
         ).fetchone()
 
         online = robot_en_linea(l)
-        # D18: sin carga por contactos, «cargando» de la estación ya no significa nada
-        # (siempre 0, y si llegara 1 sería falso): solo cuenta con CARGA_POR_CONTACTOS = True
-        en_base = (CARGA_POR_CONTACTOS and bool(est) and segundos_desde(est["momento"]) < 10
-                   and bool(est["cargando"]))
         sesion = None
         if activa:
             sesion = sesion_json(con, activa, con_celdas=False)
@@ -139,7 +134,9 @@ def estado():
             "bateria": l["bateria"] if l else None,
             "voltaje": l["voltaje"] if l else None,
             "corriente_ma": l["corriente_ma"] if l else None,
-            "cargando": en_base or (bool(l) and l["modo"] == "cargando"),
+            # Sin estación base (2026-11-26): se carga apagado con el eliminador, el robot
+            # nunca está «cargando» mientras manda datos. Se deja el campo por la app.
+            "cargando": False,
             "fuga": bool(l and l["fuga"]),
             "posicion": [l["cx"], l["cy"]] if l and l["cx"] is not None else None,
             "actualizado": l["momento"] if l else None,

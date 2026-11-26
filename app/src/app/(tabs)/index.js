@@ -67,7 +67,7 @@ export default function Inicio() {
 
           {e.fuga && <Aviso texto="¡Agua detectada! La bomba y la turbina se apagaron. Revisa el robot." />}
           {!e.online && !error && <Aviso texto="La Pi responde, pero el robot no le manda datos (revisa el USB del ESP32). Los controles están desactivados." />}
-          {bajaBateria && !e.cargando && <Aviso tipo="info" texto="Batería baja: conviene mandarlo a la base." />}
+          {bajaBateria && !e.cargando && <Aviso tipo="info" texto="Batería baja: regrésalo al inicio y cárgalo con el eliminador." />}
 
           <Seccion>Indicadores en tiempo real</Seccion>
           <View style={est.grid}>
@@ -91,7 +91,7 @@ export default function Inicio() {
           )}
           <View style={est.fila}>
             <Boton style={{ flex: 1 }} tipo="secundario" titulo="Detener" icono="stop" deshabilitado={enviando || sinRobot || !activo} onPress={() => mandar({ accion: 'detener' })} />
-            <Boton style={{ flex: 1 }} tipo="secundario" titulo="A la base" icono="home" deshabilitado={enviando || sinRobot || ['regresando', 'cargando'].includes(e.modo)} onPress={() => mandar({ accion: 'regresar' })} />
+            <Boton style={{ flex: 1 }} tipo="secundario" titulo="Regresar" icono="home" deshabilitado={enviando || sinRobot || ['regresando', 'cargando'].includes(e.modo)} onPress={() => mandar({ accion: 'regresar' })} />
           </View>
 
           {ult && (
