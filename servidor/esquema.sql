@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS eventos (
   id_evento  INTEGER PRIMARY KEY AUTOINCREMENT,
   id_sesion  INTEGER REFERENCES sesiones(id_sesion),   -- puede ser NULL (eventos fuera de sesión)
   momento    TEXT NOT NULL,
-  tipo       TEXT NOT NULL,     -- obstaculo | fuga | bateria_baja | voz | comando | base | fin | sistema
+  tipo       TEXT NOT NULL,     -- obstaculo | fuga | bateria_baja | voz | comando | base | regreso | fin | sistema | objeto
   detalle    TEXT
 );
 

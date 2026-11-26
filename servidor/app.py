@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from flask import Flask, jsonify, request
 
 import db
+from puente_robot import CARGA_POR_CONTACTOS
 
 app = Flask(__name__)
 ACCIONES = {"iniciar", "pausar", "reanudar", "detener", "regresar"}
@@ -36,6 +37,25 @@ def error(msg, codigo=400):
 
 def segundos_desde(iso):
     return (datetime.now() - datetime.fromisoformat(iso)).total_seconds()
+
+
+def robot_en_linea(l):
+    """El mismo criterio en /api/estado y /api/comando: hay una lectura de menos de 10 s."""
+    return bool(l) and segundos_desde(l["momento"]) < 10
+
+
+# En qué modos tiene sentido cada orden (el modo es el de la última lectura del puente).
+# «detener» siempre se acepta: también sirve para cerrar una sesión que quedó abierta.
+MODOS_VALIDOS = {
+    "pausar": {"limpiando", "regresando"},
+    "reanudar": {"pausado"},
+    "regresar": {"en_espera", "limpiando", "pausado"},
+}
+POR_QUE_NO = {
+    "pausar": "Solo se puede pausar mientras limpia o regresa a la base.",
+    "reanudar": "Solo se puede reanudar si el robot está en pausa.",
+    "regresar": "El robot ya va a la base o ya está en ella.",
+}
 
 
 FILTRO_ZONA = {"izquierda": "AND c.cx <= 4", "derecha": "AND c.cx >= 5"}
@@ -103,8 +123,11 @@ def estado():
             "SELECT * FROM sesiones WHERE hora_fin IS NOT NULL ORDER BY id_sesion DESC LIMIT 1"
         ).fetchone()
 
-        online = bool(l) and segundos_desde(l["momento"]) < 10
-        en_base = bool(est) and segundos_desde(est["momento"]) < 10 and bool(est["cargando"])
+        online = robot_en_linea(l)
+        # D18: sin carga por contactos, «cargando» de la estación ya no significa nada
+        # (siempre 0, y si llegara 1 sería falso): solo cuenta con CARGA_POR_CONTACTOS = True
+        en_base = (CARGA_POR_CONTACTOS and bool(est) and segundos_desde(est["momento"]) < 10
+                   and bool(est["cargando"]))
         sesion = None
         if activa:
             sesion = sesion_json(con, activa, con_celdas=False)
@@ -215,6 +238,14 @@ def comando():
     with db.conectar() as con:
         l = db.ultima_lectura(con)
         bateria = l["bateria"] if l else None
+        # Sin robot conectado la orden no se guarda: el puente la descartaría a los 10 s
+        # (db.EDAD_MAX_COMANDO_S) y es mejor que la app lo diga ya
+        if accion != "detener":
+            if not robot_en_linea(l):
+                return error("El robot no está conectado (sin datos en los últimos 10 s). "
+                             "Revisa el USB del ESP32 y el puente.", 409)
+            if accion in MODOS_VALIDOS and l["modo"] not in MODOS_VALIDOS[accion]:
+                return error(f"{POR_QUE_NO[accion]} Ahora está en «{l['modo']}».", 409)
 
         def cerrar_sesion():
             db.cerrar_sesion(con, bateria)

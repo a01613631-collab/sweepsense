@@ -6,8 +6,11 @@ ve un obstáculo. Adrián puede reemplazar el contenido manteniendo los mismos m
 """
 import db
 
-VEL = 600          # -1023 a 1023 (PWM del TB6612)
-GIRO = 450
+# Velocidades en la escala de M,vI,vD: -1023 a 1023 (PWM del TB6612). Son las de Carlos,
+# sin medir en el robot: se ajustan en las pruebas de piso. El puente no las manda de
+# golpe: les aplica una rampa (RAMPA_POR_TRAMA en puente_robot.py).
+VEL = 600          # avanzar en línea recta
+GIRO = 450         # girar en su lugar y retroceder
 
 
 class Navegacion:
@@ -39,7 +42,16 @@ class Navegacion:
         return bool(self.ruta) and (cx, cy) == self.ruta[-1]
 
     def paso(self, cx, cy, yaw, tof, piso, bump, ir):
-        """Devuelve (vel_izq, vel_der) para este ciclo."""
+        """Devuelve (vel_izq, vel_der) para este ciclo.
+
+        Casos en que esta versión básica se quedaría en un bucle, y quién los corta
+        (en puente_robot.py, sin cambiar este método):
+          - piso ≠ 0 sostenido (lo levantaron: ruedas al aire) → retrocede sin fin.
+            El puente pausa a los SIN_PISO_MAX_S.
+          - un ToF en 0 (el ESP32 manda 0 cuando el sensor falla) → min(tof) < 200 y gira
+            en su lugar sin fin. El puente pausa si los 3 están en 0, o si lleva
+            SIN_AVANZAR_MAX_S sin pedir avanzar.
+        """
         if piso or bump:
             return (-GIRO, -GIRO)            # retrocede (el ESP32 ya frenó por seguridad)
         if min(tof) < 200:

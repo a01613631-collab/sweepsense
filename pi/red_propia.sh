@@ -9,6 +9,7 @@
 #
 # Uso:   bash ~/sweepsense/pi/red_propia.sh
 # Para volver a tu Wi-Fi normal:   sudo nmcli connection down RoombaAP
+#   (y para que no vuelva al reiniciar:  sudo nmcli connection modify RoombaAP connection.autoconnect no)
 #
 # Después, en los config.h del ESP32 y del ESP8266: WIFI_SSID "Roomba", su clave,
 # y MQTT_BROKER "10.42.0.1". En la app: http://10.42.0.1:5000 (ya viene así).
@@ -42,8 +43,10 @@ unset CLAVE
 # IP fija 10.42.0.1 (sin esto NetworkManager suele dar esa, pero no lo promete).
 # pmf disable: algunas ESP8266 no se conectan si la red pide PMF.
 # powersave 2 = apagado: que el Wi-Fi de la Pi no se duerma con la red puesta.
+# autoconnect-priority 100: al reiniciar gana sobre el Wi-Fi de la casa guardado.
 sudo nmcli connection modify RoombaAP \
   connection.autoconnect yes \
+  connection.autoconnect-priority 100 \
   ipv4.method shared \
   ipv4.addresses 10.42.0.1/24 \
   802-11-wireless-security.pmf disable \

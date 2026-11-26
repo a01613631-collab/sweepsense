@@ -29,9 +29,24 @@ if [ "$(id -u)" -eq 0 ]; then
   exit 1
 fi
 
+# Con la red propia (red_propia.sh) la Pi no tiene internet: el script se puede correr
+# igual para reinstalar servicios o .env; se saltan apt, git pull y pip si ya están.
+if timeout 5 getent hosts github.com > /dev/null 2>&1; then
+  HAY_INTERNET=1
+else
+  HAY_INTERNET=0
+  echo "Sin internet (¿red Roomba puesta?): me salto apt, git pull y pip si ya están instalados."
+fi
+
 echo "== 1. Paquetes del sistema"
-sudo apt-get update
-sudo apt-get install -y mosquitto mosquitto-clients git python3-venv python3-pip
+PAQUETES="mosquitto mosquitto-clients git python3-venv python3-pip"
+if [ "$HAY_INTERNET" = 1 ]; then
+  sudo apt-get update
+  sudo apt-get install -y $PAQUETES
+elif ! dpkg -s $PAQUETES > /dev/null 2>&1; then
+  echo "Faltan paquetes ($PAQUETES) y no hay internet. Conecta la Pi a internet y vuelve a correrlo."
+  exit 1
+fi
 
 echo "== 2. Mosquitto (pasos 1 a 4 de la Guía de Mosquitto)"
 # listener 1883: sin esta línea Mosquitto 2.x solo acepta conexiones de la propia Pi
@@ -62,15 +77,24 @@ sudo usermod -aG dialout,plugdev "$USUARIO"
 # ModemManager abre cada puerto USB serie nuevo para ver si es un módem: le manda
 # basura al ESP32 y le cambia la velocidad al puerto que ya tenía abierto el puente
 # (probado el 2026-11-25: el puente dejó de leer tramas hasta reiniciarlo).
+# mask además de disable: NetworkManager lo puede volver a arrancar por D-Bus.
 sudo systemctl disable --now ModemManager 2>/dev/null || true
+sudo systemctl mask ModemManager 2>/dev/null || true
 
 echo "== 4. Código: el fork en $CARPETA (rama $RAMA)"
 if [ -d "$CARPETA/.git" ]; then
-  git -C "$CARPETA" fetch origin
-  git -C "$CARPETA" checkout "$RAMA"
-  git -C "$CARPETA" pull --ff-only origin "$RAMA"
-else
+  if [ "$HAY_INTERNET" = 1 ]; then
+    git -C "$CARPETA" fetch origin
+    git -C "$CARPETA" checkout "$RAMA"
+    git -C "$CARPETA" pull --ff-only origin "$RAMA"
+  else
+    echo "Sin internet: se queda el código que ya está."
+  fi
+elif [ "$HAY_INTERNET" = 1 ]; then
   git clone -b "$RAMA" "$REPO" "$CARPETA"
+else
+  echo "No está $CARPETA y no hay internet para clonarlo."
+  exit 1
 fi
 
 echo "== 5. Entorno de Python (.venv)"
@@ -80,7 +104,14 @@ cd "$CARPETA/servidor"
 if [ ! -x .venv/bin/python ]; then
   python3 -m venv --system-site-packages .venv
 fi
-.venv/bin/pip install -r requirements.txt
+if [ "$HAY_INTERNET" = 1 ]; then
+  .venv/bin/pip install -r requirements.txt
+elif .venv/bin/python -c "import flask, serial, paho.mqtt" 2>/dev/null; then
+  echo "Sin internet: las bibliotecas ya están en el .venv."
+else
+  echo "Faltan bibliotecas en el .venv y no hay internet. Conecta la Pi a internet y vuelve a correrlo."
+  exit 1
+fi
 
 echo "== 6. servidor/.env (contraseña del broker para el servidor)"
 if [ ! -f .env ]; then

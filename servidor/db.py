@@ -2,6 +2,7 @@
 import json
 import os
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime
 
 RUTA_DB = os.environ.get("SWEEPSENSE_DB", os.path.join(os.path.dirname(__file__), "sweepsense.db"))
@@ -16,12 +17,27 @@ def ahora():
     return datetime.now().isoformat(timespec="seconds")
 
 
+# Una orden de la app más vieja que esto ya no se manda al robot (ver comandos_pendientes)
+EDAD_MAX_COMANDO_S = 10
+
+
+@contextmanager
 def conectar():
+    """Uso:  with db.conectar() as con: ...
+    Al salir guarda los cambios (o los deshace si hubo un error) y CIERRA la conexión.
+    sqlite3 solo, con «with», guarda pero no cierra: el puente abre una conexión en cada
+    vuelta (10 por segundo) y se quedarían abiertas hasta que Python las recoja."""
+    # timeout=10: con varios procesos (API, puente, MQTT, visión) escribiendo, espera
+    # hasta 10 s a que se libere la base en lugar de fallar con «database is locked»
     con = sqlite3.connect(RUTA_DB, timeout=10)
-    con.row_factory = sqlite3.Row
-    con.execute("PRAGMA foreign_keys = ON")
-    con.execute("PRAGMA journal_mode = WAL")  # permite que la API lea mientras el puente escribe
-    return con
+    try:
+        con.row_factory = sqlite3.Row
+        con.execute("PRAGMA foreign_keys = ON")
+        con.execute("PRAGMA journal_mode = WAL")  # permite que la API lea mientras el puente escribe
+        with con:
+            yield con
+    finally:
+        con.close()
 
 
 def crear():
@@ -87,9 +103,39 @@ def obstaculos(con):
     return {(f["cx"], f["cy"]) for f in con.execute("SELECT cx, cy FROM celdas_en_mapa WHERE es_obstaculo = 1")}
 
 
-def comandos_pendientes(con):
+def comandos_pendientes(con, edad_max_s=EDAD_MAX_COMANDO_S):
+    """Órdenes por mandar al robot, de la más vieja a la más nueva.
+
+    Las que llevan más de edad_max_s esperando se descartan: se marcan atendidas y se anota
+    un evento. Por qué: si alguien aprieta «Iniciar» con el USB desconectado (o con el
+    puente caído), la orden no debe ejecutarse sola minutos después, al reconectar."""
     filas = con.execute("SELECT * FROM comandos WHERE atendido = 0 ORDER BY id").fetchall()
-    return [dict(f, parametros=json.loads(f["parametros"] or "{}")) for f in filas]
+    frescos = []
+    for f in filas:
+        try:
+            edad = (datetime.now() - datetime.fromisoformat(f["momento"])).total_seconds()
+        except (TypeError, ValueError):
+            edad = edad_max_s + 1                    # momento ilegible: se trata como vieja
+        if edad > edad_max_s:
+            descartar_comando(con, f, edad)
+        else:
+            frescos.append(dict(f, parametros=json.loads(f["parametros"] or "{}")))
+    return frescos
+
+
+def descartar_comando(con, fila, edad):
+    comando_atendido(con, fila["id"])
+    evento(con, "sistema", f"Orden «{fila['accion']}» descartada: llevaba {int(edad)} s esperando "
+                           "(el robot no estaba conectado)")
+    if fila["accion"] != "iniciar":
+        return
+    # La API ya abrió la sesión de ese «iniciar». Si no llegó otro «iniciar» después,
+    # esa sesión nunca empezó: se cierra (sin evento «fin») y su tarea vuelve a pendiente.
+    otro = con.execute("SELECT 1 FROM comandos WHERE accion = 'iniciar' AND id > ?", (fila["id"],)).fetchone()
+    activa = sesion_activa(con)
+    if activa and not otro:
+        con.execute("UPDATE sesiones SET hora_fin = ? WHERE id_sesion = ?", (ahora(), activa))
+        con.execute("UPDATE tareas SET estado = 'pendiente' WHERE id_sesion = ? AND estado = 'en_proceso'", (activa,))
 
 
 def comando_atendido(con, id_comando):
