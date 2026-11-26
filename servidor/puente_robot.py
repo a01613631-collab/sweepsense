@@ -348,13 +348,25 @@ def robot_real(puerto):
     ultimo_rx = time.time()
     paro_por_silencio = False      # para mandar la X una sola vez por cada pérdida de datos
     ya_conectado_antes = False
+    ultima_trama_ok = time.time()
 
     while True:
         # 1. Sin ESP32: buscarlo cada 2 s
         if conexion["esp"] is None:
             ruta = buscar_puerto() if puerto == "auto" else puerto
             try:
-                conexion["esp"] = serial.Serial(ruta, 115200, timeout=0.1) if ruta else None
+                if ruta:
+                    # Recién conectado, el CP2102 tarda en estar listo: si se abre de
+                    # inmediato, a veces se queda a otra velocidad y solo llega basura
+                    # (probado el 2026-11-25). Se espera 1 s y se pone la velocidad dos veces.
+                    time.sleep(1)
+                    esp = serial.Serial(ruta, 115200, timeout=0.1)
+                    esp.baudrate = 9600
+                    esp.baudrate = 115200
+                    esp.reset_input_buffer()
+                    conexion["esp"] = esp
+                else:
+                    conexion["esp"] = None
             except serial.SerialException:
                 conexion["esp"] = None
             if conexion["esp"] is None:
@@ -366,6 +378,7 @@ def robot_real(puerto):
                     db.evento(con, "sistema", "El USB del ESP32 volvió a conectarse")
             ya_conectado_antes = True
             ultimo_rx = time.time()
+            ultima_trama_ok = time.time()
 
         # 2. Con ESP32: comandos de la app, trama del robot y seguridad
         try:
@@ -373,9 +386,18 @@ def robot_real(puerto):
                 puente.atender_comandos(con)
                 linea = conexion["esp"].readline().decode(errors="ignore")
                 if linea:
-                    ultimo_rx = time.time()
-                    paro_por_silencio = False
+                    # Solo una trama cuenta como «el robot está vivo»: la basura
+                    # (puerto a otra velocidad) no debe evitar el paro por silencio
+                    if linea.startswith("S,"):
+                        ultimo_rx = time.time()
+                        ultima_trama_ok = time.time()
+                        paro_por_silencio = False
                     puente.procesar(linea, con)
+            # Vigilante: llegan datos pero ninguna trama válida en 5 s (puerto a otra
+            # velocidad o trabado) → se cierra y se vuelve a abrir el puerto
+            if time.time() - ultima_trama_ok > 5:
+                print("5 s sin tramas válidas del ESP32: vuelvo a abrir el puerto.", flush=True)
+                raise serial.SerialException("sin tramas validas")
             # Seguridad: 0.5 s sin tramas mientras se mueve = paro (una vez) y pausa
             if time.time() - ultimo_rx > 0.5 and not paro_por_silencio and puente.modo in ("limpiando", "regresando"):
                 paro_por_silencio = True
