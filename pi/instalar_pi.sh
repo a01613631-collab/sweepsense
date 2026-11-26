@@ -59,6 +59,11 @@ sudo systemctl restart mosquitto
 echo "== 3. Grupos: dialout (puerto serie del ESP32) y plugdev (Coral)"
 sudo usermod -aG dialout,plugdev "$USUARIO"
 
+# ModemManager abre cada puerto USB serie nuevo para ver si es un módem: le manda
+# basura al ESP32 y le cambia la velocidad al puerto que ya tenía abierto el puente
+# (probado el 2026-11-25: el puente dejó de leer tramas hasta reiniciarlo).
+sudo systemctl disable --now ModemManager 2>/dev/null || true
+
 echo "== 4. Código: el fork en $CARPETA (rama $RAMA)"
 if [ -d "$CARPETA/.git" ]; then
   git -C "$CARPETA" fetch origin
