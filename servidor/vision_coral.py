@@ -28,7 +28,7 @@ ETIQUETAS = os.path.join(RAIZ, "modelos", "coco_labels.txt")
 FOTO_PRUEBA = os.path.join(RAIZ, "fotos", "prueba.jpg")
 
 PUNTAJE_MIN = 0.5        # detecciones con menos puntaje se ignoran
-CADA_S = 0.5             # 2 fotos por segundo: poco CPU y RAM (la Pi tiene 2 GB)
+CADA_S = 0.5             # 2 fotos por segundo: poco CPU y RAM (probado: con la Pi de 4 GB sobra RAM)
 EVENTO_CADA_S = 10       # máximo un evento por objeto cada 10 s
 ESPERA_ERROR_S = 30      # sin cámara o sin Coral: reintentar cada 30 s
 T_OBJETO = "roomba/pi/objeto"
