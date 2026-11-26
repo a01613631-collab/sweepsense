@@ -33,10 +33,12 @@ export function alCambiarConfig(f) {
   return () => oyentes.delete(f);
 }
 
+const ESPERA_MS = 5000; // si la Pi no contesta en este tiempo, se da por caída
+
 async function http(ruta, opciones = {}) {
   const base = config.url.replace(/\/+$/, '');
   const control = new AbortController();
-  const reloj = setTimeout(() => control.abort(), 5000);
+  const reloj = setTimeout(() => control.abort(), ESPERA_MS);
   try {
     const r = await fetch(`${base}/api${ruta}`, {
       ...opciones,
@@ -47,7 +49,9 @@ async function http(ruta, opciones = {}) {
     if (!r.ok) throw new Error(datos.error || `Error ${r.status}`);
     return datos;
   } catch (e) {
-    if (e.name === 'AbortError') throw new Error('La Raspberry Pi no responde');
+    if (e.name === 'AbortError') throw new Error(`La Raspberry Pi no responde en ${base}`);
+    // fetch falla con TypeError ("Network request failed") cuando no hay red o la IP no existe
+    if (e instanceof TypeError) throw new Error(`No hay conexión con ${base}. ¿El celular está en la red Roomba?`);
     throw e;
   } finally {
     clearTimeout(reloj);
@@ -71,5 +75,6 @@ export const api = {
     esDemo() ? Promise.resolve(demo.crearTarea(cuerpo)) : http('/tareas', { method: 'POST', body: JSON.stringify(cuerpo) }),
   // Historial de lecturas para las gráficas (batería, voltaje, corriente)
   lecturas: (minutos = 30) => (esDemo() ? Promise.resolve(demo.lecturas(minutos)) : http(`/lecturas?minutos=${minutos}&puntos=120`)),
-  simularFuga: (v) => demo.simularFuga(v),
+  // Solo existe en el robot simulado; con el robot real no hace nada
+  simularFuga: (v) => { if (esDemo()) demo.simularFuga(v); },
 };

@@ -18,7 +18,10 @@ export default function Historial() {
 
   const lista = ses ?? [];
   const minutos = lista.map((s) => minutosEntre(s.hora_inicio, s.hora_fin));
-  const consumo = lista.map((s) => (s.bateria_inicio - s.bateria_final) / Math.max(1, minutosEntre(s.hora_inicio, s.hora_fin)));
+  // La Pi guarda null en la batería si no había lecturas del robot; esas sesiones no cuentan
+  const consumo = lista
+    .filter((s) => s.bateria_inicio != null && s.bateria_final != null)
+    .map((s) => (s.bateria_inicio - s.bateria_final) / Math.max(1, minutosEntre(s.hora_inicio, s.hora_fin)));
 
   return (
     <Pantalla alRefrescar={refrescar}>

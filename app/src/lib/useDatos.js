@@ -8,14 +8,20 @@ export function useDatos(pedir, cadaMs = 2000, deps = []) {
   const [datos, setDatos] = useState(null);
   const [error, setError] = useState(null);
   const vivo = useRef(true);
+  const pidiendo = useRef(false);
   const visible = useIsFocused();
 
-  const refrescar = useCallback(async () => {
+  const refrescar = useCallback(async (forzar = false) => {
+    // Si la Pi tarda (hasta 5 s sin red), no se amontonan consultas cada `cadaMs`
+    if (pidiendo.current && forzar !== true) return;
+    pidiendo.current = true;
     try {
       const d = await pedir();
       if (vivo.current) { setDatos(d); setError(null); }
     } catch (e) {
       if (vivo.current) setError(e.message || 'Error de conexión');
+    } finally {
+      pidiendo.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
@@ -24,8 +30,8 @@ export function useDatos(pedir, cadaMs = 2000, deps = []) {
     if (!visible) return undefined;
     vivo.current = true;
     refrescar();
-    const t = cadaMs ? setInterval(refrescar, cadaMs) : null;
-    const quitar = alCambiarConfig(() => { setDatos(null); refrescar(); });
+    const t = cadaMs ? setInterval(() => refrescar(), cadaMs) : null;
+    const quitar = alCambiarConfig(() => { setDatos(null); refrescar(true); });
     return () => { vivo.current = false; if (t) clearInterval(t); quitar(); };
   }, [refrescar, cadaMs, visible]);
 

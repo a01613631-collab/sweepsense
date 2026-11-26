@@ -7,11 +7,10 @@ import { Aviso, Boton, Cargando, Indicador, Pastilla, Seccion, Tarjeta, Titulo }
 import { api, leerConfig } from '../../lib/api';
 import { useDatos, duracion, fechaCorta, minutosEntre } from '../../lib/useDatos';
 import { color, nombreModo, nombreTipo, nombreZona } from '../../lib/tema';
-
 import { avisar } from '../../lib/avisar';
 
 const tonoModo = { limpiando: color.primario, pausado: color.aviso, regresando: color.aviso, cargando: color.ok, en_espera: color.suave };
-const iconoBateria = (b, carga) => (carga ? 'battery-charging' : b > 60 ? 'battery-full' : b > 25 ? 'battery-half' : 'battery-dead');
+const iconoBateria = (b, carga) => (carga ? 'battery-charging' : b == null ? 'battery-dead' : b > 60 ? 'battery-full' : b > 25 ? 'battery-half' : 'battery-dead');
 
 export default function Inicio() {
   const { datos: e, error, refrescar } = useDatos(api.estado, 2000);
@@ -28,7 +27,11 @@ export default function Inicio() {
   const demo = leerConfig().modo === 'demo';
   const se = e?.sesion;
   const ult = e?.ultima_sesion;
-  const activo = e && ['limpiando', 'pausado'].includes(e.modo);
+  // Hay algo que detener mientras limpia, está en pausa o va de regreso a la base
+  const activo = e && ['limpiando', 'pausado', 'regresando'].includes(e.modo);
+  // Sin conexión con el robot los comandos no llegarían (la Pi los guardaría para después)
+  const sinRobot = !e?.online;
+  const bajaBateria = e?.bateria != null && e.bateria < 20;
 
   return (
     <Pantalla alRefrescar={refrescar}>
@@ -63,13 +66,14 @@ export default function Inicio() {
           </Tarjeta>
 
           {e.fuga && <Aviso texto="¡Agua detectada! La bomba y la turbina se apagaron. Revisa el robot." />}
-          {e.bateria < 20 && !e.cargando && <Aviso tipo="info" texto="Batería baja: conviene mandarlo a la base." />}
+          {!e.online && !error && <Aviso texto="La Pi responde, pero el robot no le manda datos (revisa el USB del ESP32). Los controles están desactivados." />}
+          {bajaBateria && !e.cargando && <Aviso tipo="info" texto="Batería baja: conviene mandarlo a la base." />}
 
           <Seccion>Indicadores en tiempo real</Seccion>
           <View style={est.grid}>
-            <Indicador icono={iconoBateria(e.bateria, e.cargando)} valor={`${e.bateria}%`} etiqueta={e.cargando ? 'Batería · cargando' : 'Batería'}
-              tono={e.bateria < 20 ? color.alerta : color.primario} />
-            <Indicador icono="flash" valor={`${e.voltaje} V`} etiqueta={`${Math.abs(e.corriente_ma)} mA`} />
+            <Indicador icono={iconoBateria(e.bateria, e.cargando)} valor={e.bateria != null ? `${e.bateria}%` : '—'} etiqueta={e.cargando ? 'Batería · cargando' : 'Batería'}
+              tono={bajaBateria ? color.alerta : color.primario} />
+            <Indicador icono="flash" valor={e.voltaje != null ? `${e.voltaje} V` : '—'} etiqueta={e.corriente_ma != null ? `${Math.abs(e.corriente_ma)} mA` : '— mA'} />
             <Indicador icono="timer-outline" valor={se ? duracion(se.tiempo_s) : '—'} etiqueta="Tiempo limpiando" />
             <Indicador icono="grid-outline" valor={`${(se ?? ult)?.cobertura ?? 0}%`} etiqueta={se ? 'Cobertura' : 'Cobertura (última)'} />
             <Indicador icono="resize-outline" valor={`${(se ?? ult)?.area_m2 ?? 0} m²`} etiqueta={se ? 'Área limpiada' : 'Área (última)'} />
@@ -78,16 +82,16 @@ export default function Inicio() {
           </View>
 
           <Seccion>Control</Seccion>
-          {!activo ? (
-            <Boton titulo="Iniciar limpieza" icono="play" deshabilitado={enviando} onPress={() => mandar({ accion: 'iniciar', zona: 'completa', tipo: 'aspirar' })} />
+          {!activo || e.modo === 'regresando' ? (
+            <Boton titulo="Iniciar limpieza" icono="play" deshabilitado={enviando || sinRobot} onPress={() => mandar({ accion: 'iniciar', zona: 'completa', tipo: 'aspirar' })} />
           ) : e.modo === 'limpiando' ? (
-            <Boton titulo="Pausar" icono="pause" deshabilitado={enviando} onPress={() => mandar({ accion: 'pausar' })} />
+            <Boton titulo="Pausar" icono="pause" deshabilitado={enviando || sinRobot} onPress={() => mandar({ accion: 'pausar' })} />
           ) : (
-            <Boton titulo="Reanudar" icono="play" deshabilitado={enviando || e.fuga} onPress={() => mandar({ accion: 'reanudar' })} />
+            <Boton titulo="Reanudar" icono="play" deshabilitado={enviando || sinRobot || e.fuga} onPress={() => mandar({ accion: 'reanudar' })} />
           )}
           <View style={est.fila}>
-            <Boton style={{ flex: 1 }} tipo="secundario" titulo="Detener" icono="stop" deshabilitado={enviando || !activo} onPress={() => mandar({ accion: 'detener' })} />
-            <Boton style={{ flex: 1 }} tipo="secundario" titulo="A la base" icono="home" deshabilitado={enviando || e.modo === 'cargando'} onPress={() => mandar({ accion: 'regresar' })} />
+            <Boton style={{ flex: 1 }} tipo="secundario" titulo="Detener" icono="stop" deshabilitado={enviando || sinRobot || !activo} onPress={() => mandar({ accion: 'detener' })} />
+            <Boton style={{ flex: 1 }} tipo="secundario" titulo="A la base" icono="home" deshabilitado={enviando || sinRobot || ['regresando', 'cargando'].includes(e.modo)} onPress={() => mandar({ accion: 'regresar' })} />
           </View>
 
           {ult && (
@@ -123,7 +127,12 @@ export default function Inicio() {
   );
 }
 
-const iconoEvento = { obstaculo: 'alert-circle-outline', fuga: 'water', bateria_baja: 'battery-dead', comando: 'phone-portrait-outline', voz: 'mic-outline', base: 'home-outline', fin: 'checkmark-done', regreso: 'return-down-back' };
+// Un ícono por cada tipo de evento que guarda el servidor (db.evento) y el modo demo
+const iconoEvento = {
+  obstaculo: 'alert-circle-outline', fuga: 'water', bateria_baja: 'battery-dead', comando: 'phone-portrait-outline',
+  voz: 'mic-outline', base: 'home-outline', fin: 'checkmark-done', regreso: 'return-down-back',
+  objeto: 'eye-outline', sistema: 'information-circle-outline',
+};
 
 const est = StyleSheet.create({
   fila: { flexDirection: 'row', alignItems: 'center', gap: 12 },

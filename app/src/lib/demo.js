@@ -57,7 +57,7 @@ function sesionPasada(id, dias, h, m, minutos, zona, tipo, fraccion, bIni, bFin,
 
 const s = {
   modo: 'en_espera',
-  bateria: 86,
+  bateria: 80,
   fuga: false,
   pos: [...BASE],
   sesion: null, // sesión en curso
@@ -160,22 +160,21 @@ function paso() {
     const [x, y] = s.pos;
     const [bx, by] = BASE;
     if (x === bx && y === by) {
-      s.modo = 'cargando';
-      evento('base', 'Robot en la base, cargando');
+      s.modo = 'en_espera';
+      evento('base', 'Robot en la base (la carga es manual)');
     } else {
       s.pos = x !== bx ? [x + Math.sign(bx - x), y] : [x, y + Math.sign(by - y)];
       s.bateria = Math.max(0, s.bateria - 0.05);
     }
-  } else if (s.modo === 'cargando') {
-    s.bateria = Math.min(100, s.bateria + 0.8);
-    if (s.bateria >= 100) { s.modo = 'en_espera'; evento('base', 'Batería completa'); }
   }
 }
 
-const voltaje = (b) => +(10.5 + (12.6 - 10.5) * (b / 100)).toFixed(2);
+// Misma escala que la Pi (puente_robot.py): V_VACIA = 10.5 V es 0 %, V_LLENA = 12.3 V es 100 %
+const voltaje = (b) => +(10.5 + (12.3 - 10.5) * (b / 100)).toFixed(2);
 const corriente = (modo) => ({ limpiando: 2600, regresando: 900, pausado: 650, cargando: -1500 }[modo] ?? 600);
 
-// Los últimos 30 minutos simulados (una limpieza, el regreso y la carga), para que la gráfica no empiece vacía
+// Los últimos 30 minutos simulados (una limpieza y el regreso), para que la gráfica no empiece vacía.
+// Sin carga por contactos (D18): al llegar a la base queda en espera con la misma batería.
 (function sembrarLecturas() {
   const fin = ahora();
   for (let seg = 30 * 60; seg > 0; seg -= 5) {
@@ -183,8 +182,7 @@ const corriente = (modo) => ({ limpiando: 2600, regresando: 900, pausado: 650, c
     let modo = 'en_espera', b = 96;
     if (min >= 3 && min < 17) { modo = 'limpiando'; b = 96 - (min - 3) * 1.1; }
     else if (min >= 17 && min < 19) { modo = 'regresando'; b = 80.6 - (min - 17) * 0.3; }
-    else if (min >= 19 && min < 27) { modo = 'cargando'; b = 80 + (min - 19) * 0.75; }
-    else if (min >= 27) { modo = 'en_espera'; b = 86; }
+    else if (min >= 19) { modo = 'en_espera'; b = 80; }
     grabarLectura(fin - seg * 1000, modo, b);
   }
 })();
@@ -202,6 +200,7 @@ export function estado() {
     fuga: s.fuga,
     posicion: s.pos,
     actualizado: iso(ahora()),
+    estacion: null, // como en la Pi cuando la estación ESP8266 no está conectada
     ultima_sesion: s.sesiones[s.sesiones.length - 1] ? resumen(s.sesiones[s.sesiones.length - 1]) : null,
     sesion: se ? {
       id: se.id, zona: se.zona, tipo: se.tipo, hora_inicio: iso(se.inicio),
@@ -277,7 +276,6 @@ export function comando({ accion, zona = 'completa', tipo = 'aspirar', tarea_id 
   return { ok: true, modo: s.modo };
 }
 
-// Solo en demo: para enseñar la alerta de fuga en la presentación
 export function lecturas(minutos = 30) {
   avanzar();
   const desde = ahora() - minutos * 60000;
@@ -291,6 +289,7 @@ export function crearTarea({ zona = 'completa', tipo = 'aspirar' }) {
   return { ok: true, id };
 }
 
+// Solo en demo: para enseñar la alerta de fuga en la presentación
 export function simularFuga(valor) {
   s.fuga = valor;
   evento(valor ? 'fuga' : 'sistema', valor ? 'Sensor de fuga activado' : 'Sensor de fuga seco');
